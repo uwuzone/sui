@@ -269,14 +269,23 @@ impl SimulatorStore for ForkingStore {
             result.push(obj.clone());
         }
 
-        // Skip deleted objects and RPC-fetch the rest
-        if let Ok(rpc_objects) = self.fetcher.fetch_owned_objects(owner) {
-            for obj in rpc_objects {
-                let id = obj.id();
-                if !seen.contains(&id) && !self.deleted.read().contains(&id) {
-                    self.rpc_cache.write().insert(id, obj.clone());
-                    seen.insert(id);
-                    result.push(obj);
+        // RPC fallback for mainnet objects
+        match self.fetcher.fetch_owned_objects(owner) {
+            Err(e) => {
+                tracing::warn!(
+                    %owner,
+                    error = %e,
+                    "owned_objects RPC fallback failed, returning local-only results"
+                );
+            }
+            Ok(rpc_objects) => {
+                for obj in rpc_objects {
+                    let id = obj.id();
+                    if !seen.contains(&id) && !self.deleted.read().contains(&id) {
+                        self.rpc_cache.write().insert(id, obj.clone());
+                        seen.insert(id);
+                        result.push(obj);
+                    }
                 }
             }
         }

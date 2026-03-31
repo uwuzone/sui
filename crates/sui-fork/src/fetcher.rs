@@ -181,9 +181,10 @@ impl ObjectFetcher for SyncRpcFetcher {
                 None,
                 Some(SuiObjectDataOptions::bcs_lossless()),
             );
+            const MAX_PAGES: usize = 10;
             let mut objects = Vec::new();
             let mut cursor = None;
-            loop {
+            for _ in 0..MAX_PAGES {
                 let page = self
                     .client
                     .read_api()
@@ -200,6 +201,16 @@ impl ObjectFetcher for SyncRpcFetcher {
                     break;
                 }
                 cursor = page.next_cursor;
+                if cursor.is_none() {
+                    break;
+                }
+            }
+            if cursor.is_some() {
+                tracing::warn!(
+                    owner = %owner,
+                    fetched = objects.len(),
+                    "owned_objects truncated after {MAX_PAGES} pages — address may have more objects"
+                );
             }
             Ok(objects)
         })
