@@ -14822,6 +14822,28 @@ dependencies = [
 ]
 
 [[package]]
+name = "sui-fork"
+version = "1.68.1"
+dependencies = [
+ "anyhow",
+ "bcs",
+ "clap",
+ "move-core-types",
+ "parking_lot 0.12.3",
+ "serde",
+ "serde_json",
+ "simulacrum",
+ "sui-config",
+ "sui-json-rpc-types",
+ "sui-protocol-config",
+ "sui-sdk",
+ "sui-types",
+ "tokio",
+ "tracing",
+ "tracing-subscriber",
+]
+
+[[package]]
 name = "sui-framework"
 version = "0.1.0"
 dependencies = [

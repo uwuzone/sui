@@ -1,0 +1,30 @@
+# Copyright (c) Mysten Labs, Inc.
+# SPDX-License-Identifier: Apache-2.0
+
+[package]
+name = "sui-fork"
+version.workspace = true
+edition = "2024"
+
+[[bin]]
+name = "sui-fork"
+path = "src/bin/sui-fork.rs"
+
+[dependencies]
+anyhow.workspace = true
+bcs.workspace = true
+clap = { version = "4", features = ["derive"] }
+move-core-types.workspace = true
+parking_lot.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+tokio.workspace = true
+tracing.workspace = true
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+simulacrum.workspace = true
+sui-config.workspace = true
+sui-json-rpc-types.workspace = true
+sui-protocol-config.workspace = true
+sui-sdk.workspace = true
+sui-types.workspace = true
