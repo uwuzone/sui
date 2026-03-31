@@ -85,7 +85,7 @@ pub struct SyncRpcFetcher {
 
 impl SyncRpcFetcher {
     pub fn new(rpc_url: &str) -> Result<Self> {
-        let runtime = tokio::runtime::Builder::new_multi_thread()
+        let runtime = tokio::runtime::Builder::new_current_thread()
             .enable_all()
             .build()?;
         let client = runtime.block_on(SuiClientBuilder::default().build(rpc_url))?;

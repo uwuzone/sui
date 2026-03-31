@@ -101,7 +101,10 @@ impl ForkingStore {
         }
         match self.fetcher.fetch_child_object(child_id, version_upper_bound) {
             Ok(Some(obj)) => {
-                self.rpc_cache.write().insert(*child_id, obj.clone());
+                // Cache in the versioned cache — this is a version-bounded fetch,
+                // not the latest object.
+                let key = (*child_id, obj.version());
+                self.rpc_version_cache.write().insert(key, obj.clone());
                 Some(obj)
             }
             _ => None,
@@ -146,13 +149,11 @@ impl ChildObjectResolver for ForkingStore {
         child_version_upper_bound: SequenceNumber,
     ) -> sui_types::error::SuiResult<Option<Object>> {
         // Try local store first
-        match self
+        if let Ok(Some(obj)) = self
             .inner
             .read_child_object(parent, child, child_version_upper_bound)
         {
-            Ok(Some(obj)) => return Ok(Some(obj)),
-            Ok(None) => {}
-            Err(_) => {}
+            return Ok(Some(obj));
         }
 
         let child_object = match self.try_rpc_fetch_child(child, child_version_upper_bound) {
@@ -179,14 +180,13 @@ impl ChildObjectResolver for ForkingStore {
         receive_object_at_version: SequenceNumber,
         epoch_id: EpochId,
     ) -> sui_types::error::SuiResult<Option<Object>> {
-        match self.inner.get_object_received_at_version(
+        if let Ok(Some(obj)) = self.inner.get_object_received_at_version(
             owner,
             receiving_object_id,
             receive_object_at_version,
             epoch_id,
         ) {
-            Ok(Some(obj)) => return Ok(Some(obj)),
-            _ => {}
+            return Ok(Some(obj));
         }
         match self.try_rpc_fetch_version(receiving_object_id, receive_object_at_version) {
             Some(obj) => Ok(Some(obj)),
@@ -259,6 +259,8 @@ impl SimulatorStore for ForkingStore {
         obj.to_rust().expect("clock object should deserialize")
     }
 
+    /// Local-only: returns objects seeded or written by executed transactions.
+    /// Does NOT query mainnet for an address's objects.
     fn owned_objects(&self, owner: SuiAddress) -> Box<dyn Iterator<Item = Object> + '_> {
         Box::new(self.inner.owned_objects(owner).cloned())
     }
@@ -282,9 +284,9 @@ impl SimulatorStore for ForkingStore {
         events: TransactionEvents,
         written_objects: BTreeMap<ObjectID, Object>,
     ) {
-        for (id, _, _) in effects.deleted() {
-            self.deleted.write().insert(id);
-            self.rpc_cache.write().remove(&id);
+        for (id, _, _) in effects.deleted().iter().chain(effects.wrapped().iter()) {
+            self.deleted.write().insert(*id);
+            self.rpc_cache.write().remove(id);
         }
         self.inner
             .insert_executed_transaction(transaction, effects, events, written_objects);
