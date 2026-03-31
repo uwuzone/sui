@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use anyhow::Result;
 use sui_json_rpc_types::{SuiGetPastObjectRequest, SuiObjectDataOptions, SuiPastObjectResponse};
 use sui_sdk::{SuiClient, SuiClientBuilder};
-use sui_types::base_types::{ObjectID, SequenceNumber};
+use sui_types::base_types::{ObjectID, SequenceNumber, SuiAddress};
 use sui_types::object::Object;
 
 /// Abstraction over Sui RPC for fetching objects.
@@ -25,6 +25,7 @@ pub trait ObjectFetcher: Send + Sync {
         version_upper_bound: SequenceNumber,
     ) -> Result<Option<Object>>;
     fn fetch_chain_id(&self) -> Result<String>;
+    fn fetch_owned_objects(&self, owner: SuiAddress) -> Result<Vec<Object>>;
 }
 
 /// Mock implementation for unit tests. Pre-populate with `add_object`.
@@ -74,6 +75,18 @@ impl ObjectFetcher for MockFetcher {
 
     fn fetch_chain_id(&self) -> Result<String> {
         Ok(self.chain_id.clone())
+    }
+
+    fn fetch_owned_objects(&self, owner: SuiAddress) -> Result<Vec<Object>> {
+        use sui_types::object::Owner;
+        Ok(self
+            .objects
+            .lock()
+            .unwrap()
+            .values()
+            .filter(|obj| matches!(obj.owner, Owner::AddressOwner(addr) if addr == owner))
+            .cloned()
+            .collect())
     }
 }
 
@@ -158,6 +171,38 @@ impl ObjectFetcher for SyncRpcFetcher {
     fn fetch_chain_id(&self) -> Result<String> {
         self.runtime
             .block_on(async { Ok(self.client.read_api().get_chain_identifier().await?) })
+    }
+
+    fn fetch_owned_objects(&self, owner: SuiAddress) -> Result<Vec<Object>> {
+        use sui_json_rpc_types::SuiObjectResponseQuery;
+
+        self.runtime.block_on(async {
+            let query = SuiObjectResponseQuery::new(
+                None,
+                Some(SuiObjectDataOptions::bcs_lossless()),
+            );
+            let mut objects = Vec::new();
+            let mut cursor = None;
+            loop {
+                let page = self
+                    .client
+                    .read_api()
+                    .get_owned_objects(owner, Some(query.clone()), cursor, None)
+                    .await?;
+                for response in &page.data {
+                    if let Ok(data) = response.object() {
+                        if let Ok(obj) = TryInto::<Object>::try_into(data.clone()) {
+                            objects.push(obj);
+                        }
+                    }
+                }
+                if !page.has_next_page {
+                    break;
+                }
+                cursor = page.next_cursor;
+            }
+            Ok(objects)
+        })
     }
 }
 

@@ -259,10 +259,29 @@ impl SimulatorStore for ForkingStore {
         obj.to_rust().expect("clock object should deserialize")
     }
 
-    /// Local-only: returns objects seeded or written by executed transactions.
-    /// Does NOT query mainnet for an address's objects.
     fn owned_objects(&self, owner: SuiAddress) -> Box<dyn Iterator<Item = Object> + '_> {
-        Box::new(self.inner.owned_objects(owner).cloned())
+        // Collect local objects first
+        let mut seen: HashSet<ObjectID> = HashSet::new();
+        let mut result: Vec<Object> = Vec::new();
+
+        for obj in self.inner.owned_objects(owner) {
+            seen.insert(obj.id());
+            result.push(obj.clone());
+        }
+
+        // Skip deleted objects and RPC-fetch the rest
+        if let Ok(rpc_objects) = self.fetcher.fetch_owned_objects(owner) {
+            for obj in rpc_objects {
+                let id = obj.id();
+                if !seen.contains(&id) && !self.deleted.read().contains(&id) {
+                    self.rpc_cache.write().insert(id, obj.clone());
+                    seen.insert(id);
+                    result.push(obj);
+                }
+            }
+        }
+
+        Box::new(result.into_iter())
     }
 
     fn insert_checkpoint(&mut self, checkpoint: VerifiedCheckpoint) {
